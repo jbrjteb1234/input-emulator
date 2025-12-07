@@ -143,12 +143,23 @@ def key_tap(
     modifiers: int = MOD_NONE,
     delay: float = 0.03,
 ):
-    """
-    Convenience: press then release a key with an optional delay in between.
-    """
+    import random
+
+    
+    travel_delay = random.uniform(0.05, 0.4)
+
+   
+    jitter_factor = random.uniform(0.6, 1.4)
+    dwell_delay = max(0.02, delay * jitter_factor)
+
+    time.sleep(travel_delay)
+
     key_down(ser, keycode, modifiers)
-    time.sleep(delay)
+
+    time.sleep(dwell_delay)
+
     key_up(ser)
+
 
 
 # ---------- Mouse helpers ----------
