@@ -33,6 +33,12 @@ ADDR_DEFAULT = 0x00
 CMD_SEND_KB_GENERAL_DATA = 0x02  # keyboard report
 CMD_SEND_MS_REL_DATA     = 0x05  # relative mouse move/click
 
+# New: configuration / reset commands
+CMD_GET_PARA_CFG         = 0x08
+CMD_SET_PARA_CFG         = 0x09
+CMD_RESET                = 0x0F
+
+
 
 # ---------- Serial helper ----------
 
@@ -59,6 +65,122 @@ def open_serial(port: str, baudrate: int = 9600, timeout: float = 0.2) -> serial
 def _checksum(parts: list[int]) -> int:
     """Return low 8 bits of the sum of all bytes in `parts`."""
     return sum(parts) & 0xFF
+
+def _build_frame(cmd: int, data: list[int], addr: int = ADDR_DEFAULT) -> bytes:
+    """
+    Build a generic CH9329 command frame.
+
+    Format: HEAD(2) + ADDR(1) + CMD(1) + LEN(1) + DATA(N) + SUM(1)
+    """
+    length = len(data) & 0xFF
+    frame_wo_sum = HEAD + [addr & 0xFF, cmd & 0xFF, length] + [b & 0xFF for b in data]
+    checksum = _checksum(frame_wo_sum)
+    return bytes(frame_wo_sum + [checksum & 0xFF])
+
+def _get_parameter_block(ser: serial.Serial) -> list[int]:
+    """
+    Read the 50-byte parameter configuration block from the CH9329
+    using CMD_GET_PARA_CFG (0x08).
+
+    Returns a list of 50 ints.
+    """
+    # Clear any old responses
+    ser.reset_input_buffer()
+
+    # Send: HEAD, ADDR, 0x08, LEN=0, SUM
+    frame = _build_frame(CMD_GET_PARA_CFG, [])
+    ser.write(frame)
+    ser.flush()
+
+    expected_len = 2 + 1 + 1 + 1 + 50 + 1  # HEAD(2)+ADDR+CMD+LEN+DATA(50)+SUM
+    resp = ser.read(expected_len)
+
+    if len(resp) != expected_len:
+        raise RuntimeError(f"Timeout or short read from CH9329 (got {len(resp)} bytes, expected {expected_len})")
+
+    # Basic sanity checks
+    if resp[0] != HEAD[0] or resp[1] != HEAD[1]:
+        raise RuntimeError("Bad frame header in CMD_GET_PARA_CFG response")
+
+    if resp[3] != (CMD_GET_PARA_CFG | 0x80):  # normal response CMD = 0x08 | 0x80 = 0x88
+        raise RuntimeError(f"Unexpected CMD in CMD_GET_PARA_CFG response: 0x{resp[3]:02X}")
+
+    if resp[4] != 50:
+        raise RuntimeError(f"Unexpected parameter length in response: {resp[4]} (expected 50)")
+
+    data = list(resp[5:5+50])
+
+    # (Optional) checksum check:
+    calc_sum = _checksum(list(resp[:-1]))
+    if (calc_sum & 0xFF) != resp[-1]:
+        raise RuntimeError("Checksum mismatch in CMD_GET_PARA_CFG response")
+
+    return data
+
+
+def _set_parameter_block(ser: serial.Serial, params: list[int]) -> None:
+    """
+    Write a 50-byte parameter configuration block to the CH9329
+    using CMD_SET_PARA_CFG (0x09).
+
+    `params` must be a list of exactly 50 ints.
+    """
+    if len(params) != 50:
+        raise ValueError("Parameter block must be exactly 50 bytes")
+
+    ser.reset_input_buffer()
+
+    frame = _build_frame(CMD_SET_PARA_CFG, [b & 0xFF for b in params])
+    ser.write(frame)
+    ser.flush()
+
+    # Response: HEAD, ADDR, 0x89, LEN=1, STATUS, SUM  (total 7 bytes)
+    expected_len = 2 + 1 + 1 + 1 + 1 + 1
+    resp = ser.read(expected_len)
+
+    if len(resp) != expected_len:
+        raise RuntimeError("Timeout waiting for CMD_SET_PARA_CFG response")
+
+    if resp[0] != HEAD[0] or resp[1] != HEAD[1]:
+        raise RuntimeError("Bad frame header in CMD_SET_PARA_CFG response")
+
+    if resp[3] != (CMD_SET_PARA_CFG | 0x80):  # 0x09 | 0x80 = 0x89
+        raise RuntimeError(f"Unexpected CMD in CMD_SET_PARA_CFG response: 0x{resp[3]:02X}")
+
+    status = resp[5]
+    if status != 0x00:
+        raise RuntimeError(f"CH9329 reported error status 0x{status:02X} to CMD_SET_PARA_CFG")
+
+    # (Optional) checksum check:
+    calc_sum = _checksum(list(resp[:-1]))
+    if (calc_sum & 0xFF) != resp[-1]:
+        raise RuntimeError("Checksum mismatch in CMD_SET_PARA_CFG response")
+    
+# ---------- Config helpers ----------
+
+def set_baudrate_115200(ser: serial.Serial) -> None:
+    """
+    Permanently change the CH9329's UART baudrate setting to 115200 bps.
+
+    Call this while the chip is still at its current baud (normally 9600).
+    The new baudrate is stored in the chip's NVM and becomes active on the
+    **next power-on or reset**.
+
+    NOTE: 115200 is only supported when the CH9329 is powered from 5V.
+    """
+
+    # 1) Fetch current parameter block
+    params = _get_parameter_block(ser)
+
+    # 2) Overwrite the 4-byte baud field (index 3..6, big-endian)
+    baud_bytes = (115200).to_bytes(4, "big")  # 0x00 0x01 0xC2 0x00
+    params[3:7] = list(baud_bytes)
+
+    # 3) Write it back
+    _set_parameter_block(ser, params)
+
+    # At this point the new baud is stored, but **still running at old baud**
+    # until next power-cycle or CMD_RESET + reopen at 115200.
 
 
 # ---------- Keyboard helpers ----------
