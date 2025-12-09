@@ -66,15 +66,11 @@ CHAR_KEYMAP: Dict[str, tuple[int, int]] = {
 
 
 DEFAULT_SEARCH_QUERIES = [
-    "weather tomorrow",
-    "python list comprehension",
-    "best pizza near me",
-    "news headlines",
-    "time in london",
-    "how to take screenshot windows",
-    "machine learning basics",
-    "youtube",
-    "gmail login",
+    "simple websites",
+    "simple website ideas",
+    "how to make ai work when loading an image for a website",
+    "website images",
+    "best simple websites"
 ]
 
 
@@ -201,21 +197,6 @@ def _move_far_up_right(ser) -> None:
 
         time.sleep(random.uniform(0.0008, 0.003))
 
-
-def _move_towards_center_approx(ser) -> None:
-
-    duration = random.uniform(0.5, 1.0)
-    end_time = time.time() + duration
-
-    while time.time() < end_time:
-        
-        dx = -random.randint(7, 16)
-        dy = random.randint(5, 14)
-        mouse_move(ser, dx, dy)
-
-        time.sleep(random.uniform(0.0008, 0.003))
-
-
 def _local_wander_move(ser) -> None:
 
     duration = random.uniform(0.4, 1.2)
@@ -247,12 +228,6 @@ def _local_wander_move(ser) -> None:
     _human_pause(0.01, 0.06)
 
 
-def _center_mouse_approx(ser) -> None:
-
-    _move_towards_center_approx(ser)
-    _local_wander_move(ser)
-
-
 def routine_1_random_mouse_moves(ser) -> None:
     # 1–5 fast movements, each 1–3 seconds
     moves = random.randint(1, 5)
@@ -266,10 +241,6 @@ def routine_2_random_mouse_moves_with_clicks(ser) -> None:
    
     _move_far_up_right(ser)
     _human_pause(0.02, 0.10)
-
-   
-    _center_mouse_approx(ser)
-    _human_pause(0.03, 0.12)
 
    
     inner_moves = random.randint(1, 5)
@@ -348,8 +319,8 @@ def routine_7_close_current_tab(ser) -> None:
 ROUTINES: Dict[str, Callable[..., None]] = {
     "routine_1": routine_1_random_mouse_moves,
     "routine_2": routine_2_random_mouse_moves_with_clicks,
-    "routine_3": routine_3_random_mouse_moves_with_scrolls,
-    "routine_4": routine_4_random_mouse_moves_with_scrolls_and_final_click,
+    ##"routine_3": routine_3_random_mouse_moves_with_scrolls,
+    ##"routine_4": routine_4_random_mouse_moves_with_scrolls_and_final_click,
     "routine_5": routine_5_open_google_tab_and_search,
     "routine_6": routine_6_alt_tab_cycle,
     "routine_7": routine_7_close_current_tab,
@@ -368,23 +339,20 @@ def run_random_routine(ser) -> None:
         random.shuffle(phase1_funcs)
 
         for func in phase1_funcs:
-            reps = random.randint(1, 3)
+            reps = random.randint(3, 5)
             for _ in range(reps):
                 func(ser)
-                _human_pause(0.5, 2.0)
+                _human_pause(.5, 3)
 
        
-        _center_mouse_approx(ser)
-        _human_pause(0.2, 0.6)
         routine_5_open_google_tab_and_search(ser)
-        _human_pause(0.5, 2.0)
 
        
         phase3_funcs = [
             routine_1_random_mouse_moves,
-            routine_2_random_mouse_moves_with_clicks,
+            ##routine_2_random_mouse_moves_with_clicks,
             routine_3_random_mouse_moves_with_scrolls,
-            routine_4_random_mouse_moves_with_scrolls_and_final_click,
+            ##routine_4_random_mouse_moves_with_scrolls_and_final_click,
             routine_6_alt_tab_cycle,
         ]
         random.shuffle(phase3_funcs)
@@ -393,10 +361,8 @@ def run_random_routine(ser) -> None:
             reps = random.randint(1, 2)
             for _ in range(reps):
                 func(ser)
-                _human_pause(0.5, 1.0)
+                _human_pause(2, 5)
 
        
-        _center_mouse_approx(ser)
-        _human_pause(0.2, 0.6)
         routine_7_close_current_tab(ser)
-        _human_pause(0.5, 1.0)
+
